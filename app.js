@@ -243,7 +243,7 @@ function recalc(tab) {
     const descInput = '<input type="text" placeholder="Inserisci evento..." value="'+esc(state[tab].steps[idx].desc)+'" oninput="state[\''+tab+'\'].steps['+idx+'].desc=this.value;saveAll()">';
     const stakeInput = r.esito!==null
       ? '<span class="stk-col">'+fe(r.stake)+'</span>'
-      : '<input type="text" inputmode="decimal" value="'+(state[tab].steps[idx].stakeManual!==null?fn(state[tab].steps[idx].stakeManual):fn(r.stake))+'" placeholder="Importo" class="qg-inp stake-manual-inp" onchange="setManualStake(\''+tab+'\','+idx+',this.value)">';
+      : '<input type="text" inputmode="decimal" value="'+(state[tab].steps[idx].stakeManual!==null?fn(state[tab].steps[idx].stakeManual):fn(r.stake))+'" placeholder="Importo" class="stake-inp" onchange="setManualStake(\''+tab+'\','+idx+',this.value)">';
     const qgCell = r.esito!==null
       ? '<span class="qg-badge">'+(r.qGioc?r.qGioc.toFixed(2).replace('.',','):'?')+'</span>'
       : '<input type="text" inputmode="decimal" value="'+(state[tab].steps[idx].qGioc?state[tab].steps[idx].qGioc.toFixed(2).replace('.',','):'')+'" placeholder="es. 1,60" class="qg-inp" onchange="var v=parseFloat(this.value.replace(\',\',\'.\'));if(!isNaN(v)&&v>=1){state[\''+tab+'\'].steps['+idx+'].qGioc=v;recalc(\''+tab+'\');saveAll();}else{this.value=\'\';}\">';
@@ -285,7 +285,7 @@ function setManualStake(tab, idx, raw) {
 function setEsito(tab, idx, val) {
   if (val === 'ok') {
     const rows = document.querySelectorAll('#tbody-'+tab+' tr');
-    const inp  = rows[idx] && rows[idx].querySelector('input.qg-inp');
+    const inp  = rows[idx] && rows[idx].querySelector('input.qg-inp:not(.stake-inp)');
     const raw  = inp ? inp.value.replace(',','.').trim() : '';
     const q    = parseFloat(raw);
     if (!q || q < 1) { alert('Inserisci una quota valida (es. 1,60) prima di segnare OK'); return; }
@@ -293,7 +293,7 @@ function setEsito(tab, idx, val) {
     state[tab].steps[idx].esito = 'ok';
   } else {
     const rows = document.querySelectorAll('#tbody-'+tab+' tr');
-    const inp  = rows[idx] && rows[idx].querySelector('input.qg-inp');
+    const inp  = rows[idx] && rows[idx].querySelector('input.qg-inp:not(.stake-inp)');
     const raw  = inp ? inp.value.replace(',','.').trim() : '';
     const q    = parseFloat(raw);
     if (!isNaN(q) && q >= 1) state[tab].steps[idx].qGioc = q;
