@@ -6,14 +6,14 @@ const QSUGG = [
   1.55,1.55,1.65,1.65,2.46
 ];
 const N = 25;
-const TABS = ['cp1','cp2','cp3','cp4','cp5','cp6'];
-const TAB_NAMES = { cp1:'SEGNO FISSO', cp2:'Over 1.5 Casa', cp3:'G/G', cp4:'Over 1.5 Ospite', cp5:'Over 2.5', cp6:'MG Casa / MG Ospite' };
+const TABS = ['cp1'];
+const TAB_NAMES = { cp1:'CASSA' };
 const MULTI_KEY = 'cp_multipla_v1';
 const MULTI_N = 12;
 
 const state = {};
 TABS.forEach(t => { state[t] = { steps:[] }; });
-let prevMag = { cp1:0, cp2:0, cp3:0, cp4:0, cp5:0, cp6:0 };
+let prevMag = { cp1:0 };
 
 function g(id)  { return document.getElementById(id); }
 function fn(v)  { return (+v).toFixed(2).replace('.', ','); }
@@ -87,21 +87,14 @@ function buildPage(tab) {
 
   const wasActive = page.classList.contains('active');
   page.className = 'page theme-'+tab+(wasActive?' active':'');
-  const logoByTab = {
-    cp1: 'logo-cp1-yellow.png',
-    cp2: 'logo-cp2-green.png',
-    cp3: 'logo-cp3-violet.png',
-    cp4: 'logo-cp4.png',
-    cp5: 'logo-cp5.png',
-    cp6: 'logo-cp6.png'
-  };
+  const logoByTab = { cp1: 'logo-cp1-yellow.png' };
   const heroLeft = [
     '  <div class="hero-left hero-left-logo">',
     '    <div class="hero-brand"><img src="' + logoByTab[tab] + '" class="hero-logo" alt="' + TAB_NAMES[tab] + '"/></div>',
     '    <div class="hero-copy">',
     '      <div class="hero-badge">Sistema operativo</div>',
-    '      <h1 class="hero-display">' + TAB_NAMES[tab] + '</h1>',
-    '      <div class="hero-sub hero-sub-logo">Sessione <strong>' + num + '</strong> · La scalata a quota <strong>1000</strong></div>',
+    '      <h1 class="hero-display">CASSA</h1>',
+    '      <div class="hero-sub hero-sub-logo">La scalata a quota <strong>1000</strong></div>',
     '    </div>',
     '  </div>'
   ].join('');
@@ -521,7 +514,7 @@ function buildBilancio() {
     const pos = returnCur >= 0;
     grid.innerHTML +=
       '<div class="bil-card '+tab+'">'+
-      '<div class="bil-card-title">'+TAB_NAMES[tab]+'</div>'+
+      '<div class="bil-card-title">CASSA</div>'+
       '<div class="bil-rows">'+
       '<div class="bil-row"><span class="bil-row-label">Stake iniziale</span><span class="bil-row-val">'+fe(cfg.stakeIniz)+'</span></div>'+
       '<div class="bil-row"><span class="bil-row-label">Step completati</span><span class="bil-step-badge">'+doneCount+' / 25</span></div>'+
