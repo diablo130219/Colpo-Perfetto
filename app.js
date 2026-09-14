@@ -1,15 +1,25 @@
-// ===== COLPO PERFETTO — app.js =====
+// ===== COLPO PERFETTO — app.js (v2 — 5 migliorie) =====
 
-const QSUGG = [
-  1.35,1.35,1.40,1.35,1.35,1.35,1.45,1.65,1.65,1.80,
-  1.40,1.45,1.50,1.50,1.40,1.40,1.40,1.45,1.45,1.55,
-  1.55,1.55,1.65,1.65,2.46
-];
 const N = 25;
 const TABS = ['cp1'];
 const TAB_NAMES = { cp1:'CASSA' };
 const MULTI_KEY = 'cp_multipla_v1';
 const MULTI_N = 12;
+
+// Quote suggerite ottimizzate per quote basse (1.30-1.65)
+const QSUGG = [
+  1.30,1.30,1.35,1.30,1.30,1.35,1.35,1.40,1.40,1.45,
+  1.40,1.40,1.45,1.45,1.40,1.40,1.40,1.45,1.45,1.50,
+  1.50,1.50,1.55,1.60,1.65
+];
+
+// % magazzino dinamica per step (cresce man mano che sei al sicuro)
+const PCT_MAG_PER_STEP = [
+  30,30,30,                          // step 1-3  Fase1 (tutto in mag comunque)
+  35,35,40,40,45,45,50,              // step 4-10
+  50,50,55,55,55,55,55,60,60,60,    // step 11-20
+  65,65,70,70,75                     // step 21-25
+];
 
 const state = {};
 TABS.forEach(t => { state[t] = { steps:[] }; });
@@ -20,7 +30,6 @@ function fn(v)  { return (+v).toFixed(2).replace('.', ','); }
 function fe(v)  { return fn(v) + ' \u20ac'; }
 function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-// ── Cassa globale (unica per tutte le sessioni) ──
 function getCassaGlobale() {
   try {
     const raw = localStorage.getItem('cp_cassa_iniziale');
@@ -56,7 +65,6 @@ function loadAll() {
       const c = save[t].cfg || {};
       if (g('stakeIniz-'+t)) g('stakeIniz-'+t).value = c.stakeIniz ?? 3;
       if (g('stepAzz-'+t))   g('stepAzz-'+t).value   = c.stepAzz   ?? 3;
-      if (g('pctV-'+t))      g('pctV-'+t).value      = c.pctV      ?? 40;
       if (g('commP-'+t))     g('commP-'+t).value     = c.commP     ?? 0;
       state[t].steps = (save[t].steps || []).slice(0, N);
       while (state[t].steps.length < N)
@@ -73,35 +81,37 @@ function getConfig(tab) {
     cassa:     getCassaGlobale(),
     stakeIniz: parseFloat(g('stakeIniz-'+tab)?.value) || 3,
     stepAzz:   parseInt(g('stepAzz-'+tab)?.value)     || 3,
-    pctV:      parseFloat(g('pctV-'+tab)?.value)      || 40,
     commP:     parseFloat(g('commP-'+tab)?.value)     || 0,
   };
 }
 
-// ── Build CP page ──
+// % magazzino per step (dinamica o fissa fallback)
+function getPctMag(stepIndex, stepAzz) {
+  if (stepIndex < stepAzz) return 1.0; // Fase1: tutto in mag
+  const f2idx = stepIndex - stepAzz;
+  const arr = PCT_MAG_PER_STEP.slice(stepAzz);
+  const pct = arr[Math.min(f2idx, arr.length-1)] || 40;
+  return pct / 100;
+}
+
+// ── Build page ──
 function buildPage(tab) {
-  const num = tab.replace('cp','');
   const pid = 'page-'+tab;
   const page = g(pid);
   if (!page) return;
-
   const wasActive = page.classList.contains('active');
   page.className = 'page theme-'+tab+(wasActive?' active':'');
-  const logoByTab = { cp1: 'logo-cp1-yellow.png' };
-  const heroLeft = [
+
+  page.innerHTML = [
+    '<header class="hero">',
     '  <div class="hero-left hero-left-logo">',
-    '    <div class="hero-brand"><img src="' + logoByTab[tab] + '" class="hero-logo" alt="' + TAB_NAMES[tab] + '"/></div>',
+    '    <div class="hero-brand"><img src="logo-cp1-yellow.png" class="hero-logo" alt="CASSA"/></div>',
     '    <div class="hero-copy">',
     '      <div class="hero-badge">Sistema operativo</div>',
     '      <h1 class="hero-display">CASSA</h1>',
     '      <div class="hero-sub hero-sub-logo">La scalata a quota <strong>1000</strong></div>',
     '    </div>',
-    '  </div>'
-  ].join('');
-
-  page.innerHTML = [
-    '<header class="hero">',
-    heroLeft,
+    '  </div>',
     '  <div class="hero-mag">',
     '    <div class="mag-ring"><div class="mag-inner">',
     '      <div class="mag-label-top">MAGAZZINO</div>',
@@ -111,13 +121,18 @@ function buildPage(tab) {
     '  </div>',
     '</header>',
 
+    // Barra sicurezza sessione
+    '<div class="sicurezza-bar" id="sicurezza-bar-'+tab+'">',
+    '  <div class="sic-label">Sicurezza sessione</div>',
+    '  <div class="sic-track"><div class="sic-fill" id="sic-fill-'+tab+'"></div></div>',
+    '  <div class="sic-stato" id="sic-stato-'+tab+'">—</div>',
+    '</div>',
+
     '<div class="settings-bar">',
     '  <div class="setting-group"><label>Stake iniziale</label>',
     '    <div class="input-wrap"><input type="number" id="stakeIniz-'+tab+'" value="3" min="0.1" step="0.1"><span class="unit">\u20ac</span></div></div>',
     '  <div class="setting-group"><label>Step Fase 1</label>',
     '    <div class="input-wrap"><input type="number" id="stepAzz-'+tab+'" value="3" min="1" max="10" step="1"><span class="unit">#</span></div></div>',
-    '  <div class="setting-group"><label>% Magazzino F2</label>',
-    '    <div class="input-wrap"><input type="number" id="pctV-'+tab+'" value="40" min="0" max="100" step="5"><span class="unit">%</span></div></div>',
     '  <div class="setting-group"><label>Commissioni</label>',
     '    <div class="input-wrap"><input type="number" id="commP-'+tab+'" value="0" min="0" max="10" step="0.5"><span class="unit">%</span></div></div>',
     '  <button class="btn-reset" data-tab="'+tab+'">&#8635; Reset sessione</button>',
@@ -132,9 +147,9 @@ function buildPage(tab) {
     '</div>',
 
     '<div class="phase-strip">',
-    '  <div class="phase-pill"><span class="pill-dot red"></span>Fase 1 \u2014 Stake fisso, tutto il gain in magazzino</div>',
+    '  <div class="phase-pill"><span class="pill-dot red"></span>Fase 1 \u2014 Stake fisso · tutto il gain in magazzino</div>',
     '  <div class="phase-divider">\u2192</div>',
-    '  <div class="phase-pill"><span class="pill-dot gold"></span>Fase 2 \u2014 <span id="pctVd-'+tab+'">40</span>% magazzino \u00b7 <span id="pctRd-'+tab+'">60</span>% reinvestito</div>',
+    '  <div class="phase-pill"><span class="pill-dot gold"></span>Fase 2 \u2014 % magazzino <strong>dinamica</strong> per step (cresce con gli step)</div>',
     '</div>',
 
     '<div class="table-wrap"><table>',
@@ -146,9 +161,10 @@ function buildPage(tab) {
     '<th class="col-dsc">Evento + mercato</th>',
     '<th class="col-stkcol">Stake usato</th>',
     '<th class="col-qg">Q. giocata</th>',
+    '<th class="col-qs">Q. sugg.</th>',
     '<th class="col-gl">Gain lordo</th>',
     '<th class="col-gn">Gain netto</th>',
-    '<th class="col-gm">\u2192 Mag.</th>',
+    '<th class="col-gm">\u2192 Mag. %</th>',
     '<th class="col-mc">Mag. cumul.</th>',
     '<th class="col-rt">Return</th>',
     '<th class="col-es">Esito</th>',
@@ -156,59 +172,63 @@ function buildPage(tab) {
     '<tbody id="tbody-'+tab+'"></tbody>',
     '</table></div>',
 
+    // Grafico magazzino
+    '<div class="mag-chart-wrap">',
+    '  <div class="mag-chart-title">📈 Andamento Magazzino</div>',
+    '  <canvas id="mag-chart-'+tab+'" height="90"></canvas>',
+    '</div>',
+
     '<div class="formula-note">',
     '  <span class="fn-label">Formula Fase 2:</span>',
-    '  Stake<sub>n+1</sub> = Stake<sub>n</sub> + GainNetto \u00d7 (1 \u2212 %mag)',
+    '  Stake<sub>n+1</sub> = Stake<sub>n</sub> + GainNetto \u00d7 (1 \u2212 %mag<sub>step</sub>)',
     '  &nbsp;\u00b7&nbsp; <span id="mi2-'+tab+'">Prossimo stake: \u2014</span>',
     '</div>',
     '<div id="ko-container-'+tab+'"></div>'
   ].join('\n');
 }
 
-// ── Recalc ──
+// ── Calcolo ──
 function calcTab(tab) {
   const cfg = getConfig(tab);
   const { stakeIniz, stepAzz, commP } = cfg;
-  const pctV = cfg.pctV / 100;
   let stakeCur=stakeIniz, magCum=0, returnCur=0, doneCount=0;
   const rows = [];
   for (let i = 0; i < N; i++) {
     const s = state[tab].steps[i];
     const isFase1 = (i < stepAzz);
+    const pctMag = getPctMag(i, stepAzz);
     const stake = parseFloat(((s.stakeManual !== null && !isNaN(parseFloat(s.stakeManual))) ? parseFloat(s.stakeManual) : stakeCur).toFixed(2));
     let gainLordo=null, gainNetto=null, gainMag=null;
     if (s.esito === 'ok' && s.qGioc) {
       gainLordo = parseFloat((stake * s.qGioc).toFixed(2));
       const comm = parseFloat((gainLordo * commP/100).toFixed(2));
       gainNetto = parseFloat((gainLordo - stake - comm).toFixed(2));
-      if (isFase1) { gainMag=gainNetto; stakeCur=stake; }
-      else { gainMag=parseFloat((gainNetto*pctV).toFixed(2)); stakeCur=parseFloat((stake+gainNetto-gainMag).toFixed(2)); }
-      magCum = parseFloat((magCum+gainMag).toFixed(2));
-      returnCur = parseFloat((returnCur+gainNetto).toFixed(2));
+      gainMag = parseFloat((gainNetto * pctMag).toFixed(2));
+      if (isFase1) { stakeCur = stake; }
+      else { stakeCur = parseFloat((stake + gainNetto - gainMag).toFixed(2)); }
+      magCum = parseFloat((magCum + gainMag).toFixed(2));
+      returnCur = parseFloat((returnCur + gainNetto).toFixed(2));
       doneCount++;
     } else if (s.esito === 'ko') {
       gainLordo=0; gainNetto=parseFloat((-stake).toFixed(2)); gainMag=0;
       returnCur=parseFloat((returnCur-stake).toFixed(2)); doneCount++;
     }
-    rows.push({ i, isFase1, stake, qGioc:s.qGioc, gainLordo, gainNetto, gainMag, magCum, returnCur, esito:s.esito });
+    rows.push({ i, isFase1, stake, pctMag, qGioc:s.qGioc, qSugg:QSUGG[i], gainLordo, gainNetto, gainMag, magCum, returnCur, esito:s.esito });
   }
   const rischio = Math.max(0, parseFloat((stakeIniz*stepAzz-magCum).toFixed(2)));
   const np = rows.find(r => r.esito===null);
   return { rows, magCum, returnCur, doneCount, rischio, np, cfg };
 }
 
+// ── Recalc ──
 function recalc(tab) {
   const { rows, magCum, returnCur, doneCount, rischio, np, cfg } = calcTab(tab);
-  const pctV = cfg.pctV/100;
-
-  if (g('pctVd-'+tab)) g('pctVd-'+tab).textContent = Math.round(pctV*100);
-  if (g('pctRd-'+tab)) g('pctRd-'+tab).textContent = Math.round((1-pctV)*100);
 
   animCounter(g('magTot-'+tab), prevMag[tab]||0, magCum, 500);
   prevMag[tab] = magCum;
 
-  if (g('mi1-'+tab))     g('mi1-'+tab).textContent  = doneCount+' step completati';
-  if (g('mi2-'+tab))     g('mi2-'+tab).textContent  = 'Prossimo stake: '+(np?fe(np.stake):'\u2014');
+  if (g('mi1-'+tab))      g('mi1-'+tab).textContent  = doneCount+' step completati';
+  if (g('mi2-'+tab))      g('mi2-'+tab).textContent  = 'Prossimo stake: '+(np?fe(np.stake):'\u2014');
   if (g('sc-stake-'+tab)) g('sc-stake-'+tab).textContent = np?fe(np.stake):'\u2014';
   if (g('sc-step-'+tab))  g('sc-step-'+tab).textContent  = doneCount+' / '+N;
   if (g('sc-mag-'+tab))   g('sc-mag-'+tab).textContent   = fe(magCum);
@@ -224,6 +244,9 @@ function recalc(tab) {
     returnEl.className = 'stat-value ' + (returnCur >= 0 ? 'green' : 'red');
   }
 
+  // ── Barra sicurezza ──
+  aggiornaSicurezza(tab, magCum, rischio, cfg.stakeIniz, cfg.stepAzz);
+
   const tbody = g('tbody-'+tab);
   if (!tbody) return;
   tbody.innerHTML = '';
@@ -238,15 +261,27 @@ function recalc(tab) {
     if (terminated && r.esito===null) tr.classList.add('blocked-row');
     const gnClass = r.gainNetto===null?'mu':r.gainNetto>=0?'gp':'gng';
 
-    const dataInput = '<input type="date" class="date-inp" value="'+esc(state[tab].steps[idx].data)+'" oninput="state[\''+tab+'\'].steps['+idx+'].data=this.value;saveAll()">';
-    const oraInput  = '<input type="time" class="time-inp" value="'+esc(state[tab].steps[idx].ora)+'" oninput="state[\''+tab+'\'].steps['+idx+'].ora=this.value;saveAll()">';
-    const descInput = '<input type="text" placeholder="Inserisci evento..." value="'+esc(state[tab].steps[idx].desc)+'" oninput="state[\''+tab+'\'].steps['+idx+'].desc=this.value;saveAll()">';
+    const dataInput  = '<input type="date" class="date-inp" value="'+esc(state[tab].steps[idx].data)+'" oninput="state[\''+tab+'\'].steps['+idx+'].data=this.value;saveAll()">';
+    const oraInput   = '<input type="time" class="time-inp" value="'+esc(state[tab].steps[idx].ora)+'" oninput="state[\''+tab+'\'].steps['+idx+'].ora=this.value;saveAll()">';
+    const descInput  = '<input type="text" placeholder="Inserisci evento..." value="'+esc(state[tab].steps[idx].desc)+'" oninput="state[\''+tab+'\'].steps['+idx+'].desc=this.value;saveAll()">';
     const stakeInput = r.esito!==null
       ? '<span class="stk-col">'+fe(r.stake)+'</span>'
       : '<input type="text" inputmode="decimal" value="'+(state[tab].steps[idx].stakeManual!==null?fn(state[tab].steps[idx].stakeManual):fn(r.stake))+'" placeholder="Importo" class="stake-inp" onchange="setManualStake(\''+tab+'\','+idx+',this.value)">';
+
+    // Alert quota alta se > 1.80
+    const quotaVal = state[tab].steps[idx].qGioc;
+    const quotaAlert = quotaVal && quotaVal > 1.80 ? ' quota-alert' : '';
     const qgCell = r.esito!==null
-      ? '<span class="qg-badge">'+(r.qGioc?r.qGioc.toFixed(2).replace('.',','):'?')+'</span>'
-      : '<input type="text" inputmode="decimal" value="'+(state[tab].steps[idx].qGioc?state[tab].steps[idx].qGioc.toFixed(2).replace('.',','):'')+'" placeholder="es. 1,60" class="qg-inp" onchange="var v=parseFloat(this.value.replace(\',\',\'.\'));if(!isNaN(v)&&v>=1){state[\''+tab+'\'].steps['+idx+'].qGioc=v;recalc(\''+tab+'\');saveAll();}else{this.value=\'\';}\">';
+      ? '<span class="qg-badge'+quotaAlert+'">'+(r.qGioc?r.qGioc.toFixed(2).replace('.',','):'?')+'</span>'
+      : '<input type="text" inputmode="decimal" value="'+(state[tab].steps[idx].qGioc?state[tab].steps[idx].qGioc.toFixed(2).replace('.',','):'')+'" placeholder="es. 1,35" class="qg-inp" onchange="handleQuotaChange(\''+tab+'\','+idx+',this)">';
+
+    // Quota suggerita
+    const qSugg = '<span class="q-sugg">'+r.qSugg.toFixed(2).replace('.',',')+'</span>';
+
+    // % mag dinamica
+    const pctMagLabel = r.isFase1 ? '<span class="mag-pct fase1">100%</span>' :
+      '<span class="mag-pct">'+(r.gainMag!==null&&r.esito==='ok'?fe(r.gainMag)+' <em>('+Math.round(r.pctMag*100)+'%)</em>':'<span class="mu">\u2014</span>')+'</span>';
+
     const esitoCell = r.esito==='ok'
       ? '<span class="eok">OK</span>'
       : r.esito==='ko'
@@ -263,16 +298,125 @@ function recalc(tab) {
       '<td class="col-dsc">'+descInput+'</td>'+
       '<td>'+stakeInput+'</td>'+
       '<td>'+qgCell+'</td>'+
+      '<td>'+qSugg+'</td>'+
       '<td class="mu">'+(r.gainLordo!==null?fe(r.gainLordo):'\u2014')+'</td>'+
       '<td class="'+gnClass+'">'+(r.gainNetto!==null?fe(r.gainNetto):'\u2014')+'</td>'+
-      '<td class="mgv">'+(r.gainMag!==null&&r.esito==='ok'?fe(r.gainMag):'<span class="mu">\u2014</span>')+'</td>'+
+      '<td class="mgv">'+pctMagLabel+'</td>'+
       '<td class="mgc">'+(r.esito!==null?fe(r.magCum):'<span class="mu">\u2014</span>')+'</td>'+
       '<td class="ret">'+(r.esito!==null?fe(r.returnCur):'<span class="mu">\u2014</span>')+'</td>'+
       '<td>'+esitoCell+'</td>';
     tbody.appendChild(tr);
   });
 
+  // Grafico
+  disegnaGrafico(tab, rows);
   saveAll();
+}
+
+// ── Gestione quota con alert ──
+function handleQuotaChange(tab, idx, inp) {
+  const v = parseFloat(inp.value.replace(',','.'));
+  if (!isNaN(v) && v >= 1) {
+    state[tab].steps[idx].qGioc = v;
+    // Alert visivo se quota > 1.80
+    if (v > 1.80) {
+      inp.classList.add('quota-alert');
+      inp.title = '⚠ Quota alta! Il sistema funziona meglio con quote 1,30–1,65';
+    } else {
+      inp.classList.remove('quota-alert');
+      inp.title = '';
+    }
+    recalc(tab);
+    saveAll();
+  } else {
+    inp.value = '';
+    inp.classList.remove('quota-alert');
+  }
+}
+
+// ── Barra sicurezza ──
+function aggiornaSicurezza(tab, magCum, rischio, stakeIniz, stepAzz) {
+  const fill  = g('sic-fill-'+tab);
+  const stato = g('sic-stato-'+tab);
+  if (!fill || !stato) return;
+  const rischioIniz = stakeIniz * stepAzz;
+  const coperta = rischioIniz > 0 ? Math.min(1, magCum / rischioIniz) : 1;
+  const pct = Math.round(coperta * 100);
+  fill.style.width = pct + '%';
+  if (pct >= 100) {
+    fill.style.background = 'var(--green)';
+    stato.textContent = '✓ RISCHIO AZZERATO — giochi con i soldi del bookmaker';
+    stato.style.color = 'var(--green)';
+  } else if (pct >= 50) {
+    fill.style.background = '#f0a500';
+    stato.textContent = '\u26a0 Metà rischio coperta — ' + pct + '% al sicuro';
+    stato.style.color = '#f0a500';
+  } else {
+    fill.style.background = 'var(--red)';
+    stato.textContent = '\u25cf Rischio aperto — ' + pct + '% coperto';
+    stato.style.color = 'var(--red)';
+  }
+}
+
+// ── Grafico magazzino ──
+function disegnaGrafico(tab, rows) {
+  const canvas = g('mag-chart-'+tab);
+  if (!canvas) return;
+  const doneRows = rows.filter(r => r.esito !== null);
+  if (doneRows.length < 2) {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    return;
+  }
+  const W = canvas.offsetWidth || 800;
+  canvas.width  = W;
+  canvas.height = 90;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, 90);
+
+  const vals = doneRows.map(r => r.magCum);
+  const maxV = Math.max(...vals, 0.01);
+  const pad  = 10;
+  const pts  = vals.map((v, i) => ({
+    x: pad + (i / (vals.length-1||1)) * (W - pad*2),
+    y: 80 - (v / maxV) * 65
+  }));
+
+  // Linea gradiente
+  const grad = ctx.createLinearGradient(0, 0, W, 0);
+  grad.addColorStop(0, '#c9a84c');
+  grad.addColorStop(1, '#3ecf8e');
+  ctx.strokeStyle = grad;
+  ctx.lineWidth = 2.5;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  pts.forEach((p, i) => i===0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+  ctx.stroke();
+
+  // Area sotto
+  ctx.beginPath();
+  pts.forEach((p, i) => i===0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+  ctx.lineTo(pts[pts.length-1].x, 90);
+  ctx.lineTo(pts[0].x, 90);
+  ctx.closePath();
+  const areaGrad = ctx.createLinearGradient(0, 0, 0, 90);
+  areaGrad.addColorStop(0, 'rgba(201,168,76,0.18)');
+  areaGrad.addColorStop(1, 'rgba(201,168,76,0)');
+  ctx.fillStyle = areaGrad;
+  ctx.fill();
+
+  // Punti
+  pts.forEach((p, i) => {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 3, 0, Math.PI*2);
+    ctx.fillStyle = '#c9a84c';
+    ctx.fill();
+    // Label valore
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.font = '9px DM Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(fn(vals[i])+'€', p.x, p.y - 7);
+  });
 }
 
 function setManualStake(tab, idx, raw) {
@@ -285,15 +429,19 @@ function setManualStake(tab, idx, raw) {
 function setEsito(tab, idx, val) {
   if (val === 'ok') {
     const rows = document.querySelectorAll('#tbody-'+tab+' tr');
-    const inp  = rows[idx] && rows[idx].querySelector('input.qg-inp:not(.stake-inp)');
+    const inp  = rows[idx] && rows[idx].querySelector('input.qg-inp');
     const raw  = inp ? inp.value.replace(',','.').trim() : '';
     const q    = parseFloat(raw);
-    if (!q || q < 1) { alert('Inserisci una quota valida (es. 1,60) prima di segnare OK'); return; }
+    if (!q || q < 1) { alert('Inserisci una quota valida (es. 1,35) prima di segnare OK'); return; }
+    // Avviso quota alta
+    if (q > 1.80) {
+      if (!confirm('⚠ Quota '+fn(q)+' è alta per questo sistema (ottimale: 1,30–1,65).\nVuoi procedere lo stesso?')) return;
+    }
     state[tab].steps[idx].qGioc = q;
     state[tab].steps[idx].esito = 'ok';
   } else {
     const rows = document.querySelectorAll('#tbody-'+tab+' tr');
-    const inp  = rows[idx] && rows[idx].querySelector('input.qg-inp:not(.stake-inp)');
+    const inp  = rows[idx] && rows[idx].querySelector('input.qg-inp');
     const raw  = inp ? inp.value.replace(',','.').trim() : '';
     const q    = parseFloat(raw);
     if (!isNaN(q) && q >= 1) state[tab].steps[idx].qGioc = q;
@@ -338,18 +486,13 @@ function doReset(tab) {
 
 // ── Multipla ──
 const multiplaState = { rows: [], importo: 10, esito: null };
-
 function initMultipla() {
   multiplaState.rows = [];
   for (let i = 0; i < MULTI_N; i++) multiplaState.rows.push({ data:'', ora:'', evento:'', mercato:'', quota:null });
   multiplaState.importo = 10;
   multiplaState.esito = null;
 }
-
-function saveMultipla() {
-  try { localStorage.setItem(MULTI_KEY, JSON.stringify(multiplaState)); } catch(e) {}
-}
-
+function saveMultipla() { try { localStorage.setItem(MULTI_KEY, JSON.stringify(multiplaState)); } catch(e) {} }
 function loadMultipla() {
   try {
     const raw = localStorage.getItem(MULTI_KEY);
@@ -363,7 +506,6 @@ function loadMultipla() {
     return true;
   } catch(e) { return false; }
 }
-
 function calcMultipla() {
   const quote = multiplaState.rows.map(r => parseFloat(r.quota)).filter(q => !isNaN(q) && q > 1);
   const quotaTot = quote.length ? parseFloat(quote.reduce((a,b)=>a*b,1).toFixed(2)) : 0;
@@ -372,7 +514,6 @@ function calcMultipla() {
   const profitto = multiplaState.esito === 'ok' ? parseFloat((vincitaLord - importo).toFixed(2)) : multiplaState.esito === 'ko' ? -importo : 0;
   return { eventi: quote.length, quotaTot, importo, vincitaLord, profitto };
 }
-
 function buildMultiplaPage() {
   const page = g('page-multipla');
   if (!page) return;
@@ -417,105 +558,64 @@ function buildMultiplaPage() {
     '<div class="multi-esito-msg" id="multi-esito-msg">Nessun esito selezionato</div>'
   ].join('\n');
 }
-
 function recalcMultipla() {
   const c = calcMultipla();
   const imp = g('multi-importo');
   if (imp && document.activeElement !== imp) imp.value = multiplaState.importo;
   if (g('multi-quota-big'))  g('multi-quota-big').textContent  = c.quotaTot ? fn(c.quotaTot) : '0,00';
-  if (g('multi-eventi-big')) g('multi-eventi-big').textContent = c.eventi + (c.eventi === 1 ? ' evento' : ' eventi');
+  if (g('multi-eventi-big')) g('multi-eventi-big').textContent = c.eventi + (c.eventi===1?' evento':' eventi');
   if (g('multi-eventi'))  g('multi-eventi').textContent  = c.eventi;
   if (g('multi-quota'))   g('multi-quota').textContent   = c.quotaTot ? fn(c.quotaTot) : '0,00';
   if (g('multi-stake'))   g('multi-stake').textContent   = fe(c.importo);
   if (g('multi-vincita')) g('multi-vincita').textContent = fe(c.vincitaLord);
   const pr = g('multi-profitto');
-  if (pr) {
-    pr.textContent = multiplaState.esito ? (c.profitto >= 0 ? '+' : '') + fe(c.profitto) : '—';
-    pr.className = 'stat-value ' + (!multiplaState.esito ? '' : c.profitto >= 0 ? 'green' : 'red');
-  }
-  const okBtn = g('multi-ok');
-  const koBtn = g('multi-ko');
-  if (okBtn) okBtn.classList.toggle('selected-esito', multiplaState.esito === 'ok');
-  if (koBtn) koBtn.classList.toggle('selected-esito', multiplaState.esito === 'ko');
-  const msg = g('multi-esito-msg');
+  if (pr) { pr.textContent = multiplaState.esito ? (c.profitto>=0?'+':'')+fe(c.profitto) : '—'; pr.className='stat-value '+(!multiplaState.esito?'':c.profitto>=0?'green':'red'); }
+  const okBtn=g('multi-ok'), koBtn=g('multi-ko');
+  if (okBtn) okBtn.classList.toggle('selected-esito', multiplaState.esito==='ok');
+  if (koBtn) koBtn.classList.toggle('selected-esito', multiplaState.esito==='ko');
+  const msg=g('multi-esito-msg');
   if (msg) {
-    if (multiplaState.esito === 'ok') {
-      msg.textContent = 'Multipla VINTA registrata nel Bilancio: profitto +' + fe(c.profitto);
-      msg.className = 'multi-esito-msg ok';
-    } else if (multiplaState.esito === 'ko') {
-      msg.textContent = 'Multipla PERSA registrata nel Bilancio: perdita -' + fe(c.importo);
-      msg.className = 'multi-esito-msg ko';
-    } else {
-      msg.textContent = 'Nessun esito selezionato';
-      msg.className = 'multi-esito-msg';
-    }
+    if (multiplaState.esito==='ok') { msg.textContent='Multipla VINTA: profitto +'+fe(c.profitto); msg.className='multi-esito-msg ok'; }
+    else if (multiplaState.esito==='ko') { msg.textContent='Multipla PERSA: perdita -'+fe(c.importo); msg.className='multi-esito-msg ko'; }
+    else { msg.textContent='Nessun esito selezionato'; msg.className='multi-esito-msg'; }
   }
-  const tb = g('multi-tbody');
+  const tb=g('multi-tbody');
   if (!tb) return;
-  tb.innerHTML = '';
-  multiplaState.rows.forEach((r, idx) => {
-    const tr = document.createElement('tr');
-    const dataInput    = '<input type="date" class="date-inp" value="'+esc(r.data)+'" oninput="multiplaState.rows['+idx+'].data=this.value;saveMultipla()">';
-    const oraInput     = '<input type="time" class="time-inp" value="'+esc(r.ora)+'" oninput="multiplaState.rows['+idx+'].ora=this.value;saveMultipla()">';
-    const eventoInput  = '<input type="text" placeholder="Partita / evento" value="'+esc(r.evento)+'" oninput="multiplaState.rows['+idx+'].evento=this.value;saveMultipla()">';
-    const mercatoInput = '<input type="text" placeholder="Mercato" value="'+esc(r.mercato)+'" oninput="multiplaState.rows['+idx+'].mercato=this.value;saveMultipla()">';
-    const quotaInput   = '<input type="text" inputmode="decimal" class="qg-inp" placeholder="es. 1,45" value="'+(r.quota?fn(r.quota):'=')+'" onchange="var v=parseFloat(this.value.replace(\',\',\'.\')); if(!isNaN(v)&&v>1){multiplaState.rows['+idx+'].quota=v;}else{multiplaState.rows['+idx+'].quota=null;this.value=\'\';} recalcMultipla(); saveMultipla();">';
-    tr.innerHTML = '<td>'+(idx+1)+'</td><td>'+dataInput+'</td><td>'+oraInput+'</td><td class="col-dsc">'+eventoInput+'</td><td class="col-dsc">'+mercatoInput+'</td><td>'+quotaInput+'</td>';
+  tb.innerHTML='';
+  multiplaState.rows.forEach((r,idx)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML='<td>'+(idx+1)+'</td>'+
+      '<td><input type="date" class="date-inp" value="'+esc(r.data)+'" oninput="multiplaState.rows['+idx+'].data=this.value;saveMultipla()"></td>'+
+      '<td><input type="time" class="time-inp" value="'+esc(r.ora)+'" oninput="multiplaState.rows['+idx+'].ora=this.value;saveMultipla()"></td>'+
+      '<td class="col-dsc"><input type="text" placeholder="Partita / evento" value="'+esc(r.evento)+'" oninput="multiplaState.rows['+idx+'].evento=this.value;saveMultipla()"></td>'+
+      '<td class="col-dsc"><input type="text" placeholder="Mercato" value="'+esc(r.mercato)+'" oninput="multiplaState.rows['+idx+'].mercato=this.value;saveMultipla()"></td>'+
+      '<td><input type="text" inputmode="decimal" class="qg-inp" placeholder="es. 1,45" value="'+(r.quota?fn(r.quota):'')+'" onchange="var v=parseFloat(this.value.replace(\',\',\'.\'));if(!isNaN(v)&&v>1){multiplaState.rows['+idx+'].quota=v;}else{multiplaState.rows['+idx+'].quota=null;this.value=\'\';}recalcMultipla();saveMultipla();"></td>';
     tb.appendChild(tr);
   });
   saveMultipla();
 }
-
-function resetMultipla() {
-  if (!confirm('Resettare la multipla?')) return;
-  initMultipla();
-  recalcMultipla();
-  saveMultipla();
-  if (document.querySelector('#page-bilancio.active')) buildBilancio();
-}
-
+function resetMultipla() { if(!confirm('Resettare la multipla?'))return; initMultipla(); recalcMultipla(); saveMultipla(); if(document.querySelector('#page-bilancio.active'))buildBilancio(); }
 function setMultiplaEsito(val) {
-  const c = calcMultipla();
-  if (val === 'ok' && (c.eventi === 0 || c.quotaTot <= 0)) {
-    alert('Inserisci almeno una quota valida prima di segnare la multipla OK.');
-    return;
-  }
-  if (val === 'ko' && c.importo <= 0) {
-    alert('Inserisci un importo valido prima di segnare la multipla KO.');
-    return;
-  }
-  multiplaState.esito = val;
-  recalcMultipla();
-  saveMultipla();
-  if (document.querySelector('#page-bilancio.active')) buildBilancio();
+  const c=calcMultipla();
+  if(val==='ok'&&(c.eventi===0||c.quotaTot<=0)){alert('Inserisci almeno una quota valida.');return;}
+  if(val==='ko'&&c.importo<=0){alert('Inserisci un importo valido.');return;}
+  multiplaState.esito=val; recalcMultipla(); saveMultipla();
+  if(document.querySelector('#page-bilancio.active'))buildBilancio();
 }
-
-function clearMultiplaEsito() {
-  multiplaState.esito = null;
-  recalcMultipla();
-  saveMultipla();
-  if (document.querySelector('#page-bilancio.active')) buildBilancio();
-}
+function clearMultiplaEsito() { multiplaState.esito=null; recalcMultipla(); saveMultipla(); if(document.querySelector('#page-bilancio.active'))buildBilancio(); }
 
 // ── Bilancio ──
 function buildBilancio() {
-  const grid = g('bil-grid');
-  const tots = g('bil-totals');
-  if (!grid||!tots) return;
-
-  const cassaGlobale = getCassaGlobale();
+  const grid=g('bil-grid'), tots=g('bil-totals');
+  if(!grid||!tots) return;
+  const cassaGlobale=getCassaGlobale();
   let totalMag=0, totalReturn=0;
-  grid.innerHTML = '';
-
-  TABS.forEach(tab => {
-    const { magCum, returnCur, doneCount, rischio, cfg } = calcTab(tab);
-    totalMag    += magCum;
-    totalReturn += returnCur;
-    const pos = returnCur >= 0;
-    grid.innerHTML +=
-      '<div class="bil-card '+tab+'">'+
-      '<div class="bil-card-title">CASSA</div>'+
-      '<div class="bil-rows">'+
+  grid.innerHTML='';
+  TABS.forEach(tab=>{
+    const {magCum,returnCur,doneCount,rischio,cfg}=calcTab(tab);
+    totalMag+=magCum; totalReturn+=returnCur;
+    const pos=returnCur>=0;
+    grid.innerHTML+='<div class="bil-card '+tab+'"><div class="bil-card-title">CASSA</div><div class="bil-rows">'+
       '<div class="bil-row"><span class="bil-row-label">Stake iniziale</span><span class="bil-row-val">'+fe(cfg.stakeIniz)+'</span></div>'+
       '<div class="bil-row"><span class="bil-row-label">Step completati</span><span class="bil-step-badge">'+doneCount+' / 25</span></div>'+
       '<div class="bil-row"><span class="bil-row-label">Magazzino accumulato</span><span class="bil-row-val gold">'+fe(magCum)+'</span></div>'+
@@ -523,119 +623,74 @@ function buildBilancio() {
       '<div class="bil-row"><span class="bil-row-label">Rischio netto</span><span class="bil-row-val">'+fe(rischio)+'</span></div>'+
       '</div></div>';
   });
-
-  const multi = calcMultipla();
-  const multiPos = multi.profitto >= 0;
-  const multiRischio = multiplaState.esito === 'ok' ? 0 : multi.importo;
-  totalReturn = parseFloat((totalReturn + multi.profitto).toFixed(2));
-
-  grid.innerHTML +=
-    '<div class="bil-card multipla">'+
-    '<div class="bil-card-title">MULTIPLA</div>'+
-    '<div class="bil-rows">'+
+  const multi=calcMultipla();
+  const multiRischio=multiplaState.esito==='ok'?0:multi.importo;
+  totalReturn=parseFloat((totalReturn+multi.profitto).toFixed(2));
+  grid.innerHTML+='<div class="bil-card multipla"><div class="bil-card-title">MULTIPLA</div><div class="bil-rows">'+
     '<div class="bil-row"><span class="bil-row-label">Importo giocato</span><span class="bil-row-val">'+fe(multi.importo)+'</span></div>'+
-    '<div class="bil-row"><span class="bil-row-label">Eventi inseriti</span><span class="bil-step-badge">'+multi.eventi+' / '+MULTI_N+'</span></div>'+
-    '<div class="bil-row"><span class="bil-row-label">Quota totale</span><span class="bil-row-val gold">'+(multi.quotaTot ? fn(multi.quotaTot) : '0,00')+'</span></div>'+
+    '<div class="bil-row"><span class="bil-row-label">Quota totale</span><span class="bil-row-val gold">'+(multi.quotaTot?fn(multi.quotaTot):'0,00')+'</span></div>'+
     '<div class="bil-row"><span class="bil-row-label">Vincita potenziale</span><span class="bil-row-val green">'+fe(multi.vincitaLord)+'</span></div>'+
-    '<div class="bil-row"><span class="bil-row-label">Return totale</span><span class="bil-row-val '+(multiPos?'green':'red')+'">'+(multi.profitto>=0?'+':'')+fe(multi.profitto)+'</span></div>'+
+    '<div class="bil-row"><span class="bil-row-label">Return totale</span><span class="bil-row-val '+(multi.profitto>=0?'green':'red')+'">'+(multi.profitto>=0?'+':'')+fe(multi.profitto)+'</span></div>'+
     '<div class="bil-row"><span class="bil-row-label">Rischio netto</span><span class="bil-row-val">'+fe(multiRischio)+'</span></div>'+
     '</div></div>';
-
-  // Totali globali con cassa unica
-  const cassaDisp = parseFloat((cassaGlobale + totalReturn).toFixed(2));
-  const cassaClass = totalReturn >= 0 ? 'green' : 'red';
-  tots.innerHTML =
+  const cassaDisp=parseFloat((cassaGlobale+totalReturn).toFixed(2));
+  tots.innerHTML=
     '<div class="bil-tot-item"><div class="bil-tot-label">Cassa iniziale</div><div class="bil-tot-val">'+fe(cassaGlobale)+'</div></div>'+
     '<div class="bil-tot-item"><div class="bil-tot-label">Magazzino totale</div><div class="bil-tot-val gold">'+fe(totalMag)+'</div></div>'+
     '<div class="bil-tot-item"><div class="bil-tot-label">Return cumulato</div><div class="bil-tot-val '+(totalReturn>=0?'green':'red')+'">'+(totalReturn>=0?'+':'')+fe(totalReturn)+'</div></div>'+
-    '<div class="bil-tot-item"><div class="bil-tot-label">Cassa disponibile</div><div class="bil-tot-val '+cassaClass+'">'+fe(cassaDisp)+'</div></div>';
+    '<div class="bil-tot-item"><div class="bil-tot-label">Cassa disponibile</div><div class="bil-tot-val '+(cassaDisp>=cassaGlobale?'green':'red')+'">'+fe(cassaDisp)+'</div></div>';
 }
 
 // ── Counter animation ──
-function animCounter(el, from, to, dur) {
-  if (!el) return;
-  const start = performance.now();
-  const tick = now => {
-    const t = Math.min((now-start)/dur, 1);
-    const ease = 1-Math.pow(1-t,3);
-    el.textContent = fn(from+(to-from)*ease)+' \u20ac';
-    if (t<1) requestAnimationFrame(tick);
-  };
+function animCounter(el,from,to,dur){
+  if(!el)return;
+  const start=performance.now();
+  const tick=now=>{const t=Math.min((now-start)/dur,1);const ease=1-Math.pow(1-t,3);el.textContent=fn(from+(to-from)*ease)+' \u20ac';if(t<1)requestAnimationFrame(tick);};
   requestAnimationFrame(tick);
 }
 
 // ── Tab switching ──
-function switchTab(tab) {
-  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab===tab));
-  document.querySelectorAll('.page').forEach(p => {
-    const isActive = p.id === 'page-'+tab;
-    p.classList.toggle('active', isActive);
-  });
-  if (tab==='bilancio') buildBilancio();
-  else if (tab==='taccuino') buildTaccuino();
-  else if (tab==='multipla') recalcMultipla();
-  else {
-    recalc(tab);
-    if (state[tab].terminated) showKoBanner(tab);
-  }
+function switchTab(tab){
+  document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
+  document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page-'+tab));
+  if(tab==='bilancio') buildBilancio();
+  else if(tab==='taccuino') buildTaccuino();
+  else if(tab==='multipla') recalcMultipla();
+  else { recalc(tab); if(state[tab].terminated) showKoBanner(tab); }
 }
 
 // ── INIT ──
-document.addEventListener('DOMContentLoaded', async () => {
-  TABS.forEach(tab => { initSteps(tab); buildPage(tab); });
-  initMultipla();
-  buildMultiplaPage();
+document.addEventListener('DOMContentLoaded', async ()=>{
+  TABS.forEach(tab=>{ initSteps(tab); buildPage(tab); });
+  initMultipla(); buildMultiplaPage();
+  try { if(window.CP_CLOUD_READY) await window.CP_CLOUD_READY; } catch(e){}
+  loadAll(); loadMultipla(); recalcMultipla();
 
-  try { if (window.CP_CLOUD_READY) await window.CP_CLOUD_READY; } catch(e) {}
-  loadAll();
-  loadMultipla();
-  recalcMultipla();
-
-  document.addEventListener('change', e => {
-    TABS.forEach(tab => {
-      ['stakeIniz-','stepAzz-','pctV-','commP-'].forEach(prefix => {
-        if (e.target.id === prefix+tab) { recalc(tab); saveAll(); }
+  document.addEventListener('change', e=>{
+    TABS.forEach(tab=>{
+      ['stakeIniz-','stepAzz-','commP-'].forEach(prefix=>{
+        if(e.target.id===prefix+tab){ recalc(tab); saveAll(); }
       });
     });
   });
-
-  const multiImporto = document.getElementById('multi-importo');
-  if (multiImporto) multiImporto.addEventListener('input', function(){
-    const v = parseFloat(this.value.replace(',', '.'));
-    multiplaState.importo = (!isNaN(v) && v > 0) ? v : 0;
-    recalcMultipla();
-    saveMultipla();
+  const mi=document.getElementById('multi-importo');
+  if(mi) mi.addEventListener('input',function(){const v=parseFloat(this.value.replace(',','.'));multiplaState.importo=(!isNaN(v)&&v>0)?v:0;recalcMultipla();saveMultipla();});
+  document.addEventListener('click', e=>{
+    const btn=e.target.closest('.bok,.bko');
+    if(btn&&btn.dataset.tab&&btn.dataset.idx!==undefined&&btn.dataset.val) setEsito(btn.dataset.tab,parseInt(btn.dataset.idx),btn.dataset.val);
   });
-
-  document.addEventListener('click', e => {
-    const btn = e.target.closest('.bok, .bko');
-    if (btn && btn.dataset.tab && btn.dataset.idx !== undefined && btn.dataset.val) {
-      setEsito(btn.dataset.tab, parseInt(btn.dataset.idx), btn.dataset.val);
-    }
+  document.addEventListener('click', e=>{
+    if(e.target.classList.contains('btn-reset')){const tab=e.target.dataset.tab;if(!tab)return;if(!confirm('Salvare la sessione nel Taccuino e resettare CASSA?'))return;doReset(tab);}
   });
-
-  document.addEventListener('click', e => {
-    if (e.target.classList.contains('btn-reset')) {
-      const tab = e.target.dataset.tab;
-      if (!tab) return;
-      if (!confirm('Salvare la sessione nel Taccuino e resettare '+TAB_NAMES[tab]+'?')) return;
-      doReset(tab);
-    }
+  document.addEventListener('click', e=>{
+    if(e.target.id==='multi-ok') setMultiplaEsito('ok');
+    if(e.target.id==='multi-ko') setMultiplaEsito('ko');
+    if(e.target.id==='multi-clear-esito') clearMultiplaEsito();
+    if(e.target.id==='multi-reset') resetMultipla();
   });
+  document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>switchTab(btn.dataset.tab)));
+  TABS.forEach(tab=>{ recalc(tab); if(state[tab].terminated) showKoBanner(tab); });
 
-  document.addEventListener('click', e => {
-    if (e.target.id === 'multi-ok') setMultiplaEsito('ok');
-    if (e.target.id === 'multi-ko') setMultiplaEsito('ko');
-    if (e.target.id === 'multi-clear-esito') clearMultiplaEsito();
-    if (e.target.id === 'multi-reset') resetMultipla();
-  });
-
-  document.querySelectorAll('.tab').forEach(btn => {
-    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
-  });
-
-  TABS.forEach(tab => {
-    recalc(tab);
-    if (state[tab].terminated) showKoBanner(tab);
-  });
+  // Ridisegna grafico su resize
+  window.addEventListener('resize', ()=>{ TABS.forEach(tab=>{ const {rows}=calcTab(tab); disegnaGrafico(tab,rows); }); });
 });

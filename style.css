@@ -1421,3 +1421,65 @@ td input.time-inp:focus {
   background: rgba(251,113,133,.10);
   border-color: rgba(251,113,133,.32);
 }
+
+/* ===== MIGLIORIE v2 ===== */
+
+/* Barra sicurezza sessione */
+.sicurezza-bar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 20px; margin: 0 0 4px 0;
+  background: rgba(255,255,255,0.03);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.sic-label { font-size: 11px; color: var(--text3); font-family: 'DM Mono',monospace; white-space: nowrap; }
+.sic-track { flex: 1; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; }
+.sic-fill  { height: 100%; border-radius: 3px; transition: width .6s ease, background .4s; }
+.sic-stato { font-size: 11px; font-family: 'DM Mono',monospace; white-space: nowrap; min-width: 260px; text-align: right; }
+
+/* Quota suggerita */
+.q-sugg {
+  display: inline-block;
+  padding: 2px 7px;
+  background: rgba(201,168,76,0.12);
+  border: 1px solid rgba(201,168,76,0.25);
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: 'DM Mono', monospace;
+  color: #c9a84c;
+  white-space: nowrap;
+}
+
+/* Alert quota alta */
+input.quota-alert, span.quota-alert {
+  border-color: #ff9800 !important;
+  box-shadow: 0 0 0 2px rgba(255,152,0,0.25) !important;
+  color: #ff9800 !important;
+}
+span.qg-badge.quota-alert {
+  background: rgba(255,152,0,0.15);
+  border-color: #ff9800;
+  color: #ff9800;
+}
+
+/* % magazzino dinamica nella colonna → Mag. */
+.mag-pct { font-size: 11px; font-family: 'DM Mono',monospace; }
+.mag-pct em { color: var(--text3); font-style: normal; }
+.mag-pct.fase1 { color: var(--gold); }
+
+/* Grafico magazzino */
+.mag-chart-wrap {
+  margin: 16px 0 0 0;
+  padding: 14px 20px 10px;
+  background: rgba(255,255,255,0.025);
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.mag-chart-title {
+  font-size: 11px;
+  font-family: 'DM Mono', monospace;
+  color: var(--text3);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+#mag-chart-cp1 { display: block; width: 100%; }
