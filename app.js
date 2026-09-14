@@ -135,7 +135,8 @@ function buildPage(tab) {
     '    <div class="input-wrap"><input type="number" id="stepAzz-'+tab+'" value="3" min="1" max="10" step="1"><span class="unit">#</span></div></div>',
     '  <div class="setting-group"><label>Commissioni</label>',
     '    <div class="input-wrap"><input type="number" id="commP-'+tab+'" value="0" min="0" max="10" step="0.5"><span class="unit">%</span></div></div>',
-    '  <button class="btn-reset" data-tab="'+tab+'">&#8635; Reset sessione</button>',
+    '  <button class="btn-reset" data-tab="'+tab+'">&#8635; Salva nel Taccuino</button>',
+    '  <button class="btn-elimina" data-tab="'+tab+'">&#128465; Elimina scalata</button>',
     '</div>',
 
     '<div class="stats-grid">',
@@ -168,6 +169,7 @@ function buildPage(tab) {
     '<th class="col-mc">Mag. cumul.</th>',
     '<th class="col-rt">Return</th>',
     '<th class="col-es">Esito</th>',
+    '<th class="col-ann">↩</th>',
     '</tr></thead>',
     '<tbody id="tbody-'+tab+'"></tbody>',
     '</table></div>',
@@ -304,7 +306,8 @@ function recalc(tab) {
       '<td class="mgv">'+pctMagLabel+'</td>'+
       '<td class="mgc">'+(r.esito!==null?fe(r.magCum):'<span class="mu">\u2014</span>')+'</td>'+
       '<td class="ret">'+(r.esito!==null?fe(r.returnCur):'<span class="mu">\u2014</span>')+'</td>'+
-      '<td>'+esitoCell+'</td>';
+      '<td>'+esitoCell+'</td>'+
+      '<td>'+(r.esito!==null?'<button class="btn-annulla" data-tab="'+tab+'" data-idx="'+idx+'">↩</button>':'')+'</td>';
     tbody.appendChild(tr);
   });
 
@@ -468,7 +471,10 @@ function showKoBanner(tab) {
     '<div class="ko-stat"><span>Magazzino salvato</span><strong class="gold">'+fe(magCum)+'</strong></div>'+
     '<div class="ko-stat"><span>Rischio netto</span><strong class="red">'+fe(rischio)+'</strong></div>'+
     '</div></div>'+
+    '<div class="ko-banner-actions">'+
     '<button class="ko-banner-btn" onclick="doReset(\''+tab+'\')">&#8635; Salva nel Taccuino e ricomincia</button>'+
+    '<button class="ko-banner-btn ko-banner-btn-del" onclick="eliminaScalata(\''+tab+'\')">&#128465; Elimina senza salvare</button>'+
+    '</div>'+
     '</div>';
   container.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
@@ -484,12 +490,39 @@ function doReset(tab) {
   saveAll();
 }
 
+
+function eliminaScalata(tab) {
+  if (!confirm('Eliminare tutta la scalata senza salvare nel Taccuino?\nQuesta operazione non è reversibile.')) return;
+  initSteps(tab);
+  prevMag[tab] = 0;
+  const container = document.getElementById('ko-container-'+tab);
+  if (container) container.innerHTML = '';
+  recalc(tab);
+  saveAll();
+}
+
+function annullaEsito(tab, idx) {
+  if (!confirm('Annullare l\'esito dello step '+(idx+1)+'?')) return;
+  state[tab].steps[idx].esito = null;
+  state[tab].steps[idx].qGioc = null;
+  // Se era KO, riabilita la sessione
+  state[tab].terminated = state[tab].steps.some(s => s.esito === 'ko');
+  // Svuota ko-container se non ci sono più KO
+  if (!state[tab].terminated) {
+    const container = document.getElementById('ko-container-'+tab);
+    if (container) container.innerHTML = '';
+  }
+  recalc(tab);
+  saveAll();
+}
+
 // ── Multipla ──
-const multiplaState = { rows: [], importo: 10, esito: null };
+const multiplaState = { rows: [], importo: 10, bonus: 0, esito: null };
 function initMultipla() {
   multiplaState.rows = [];
   for (let i = 0; i < MULTI_N; i++) multiplaState.rows.push({ data:'', ora:'', evento:'', mercato:'', quota:null });
   multiplaState.importo = 10;
+  multiplaState.bonus = 0;
   multiplaState.esito = null;
 }
 function saveMultipla() { try { localStorage.setItem(MULTI_KEY, JSON.stringify(multiplaState)); } catch(e) {} }
@@ -502,6 +535,7 @@ function loadMultipla() {
     while (multiplaState.rows.length < MULTI_N) multiplaState.rows.push({ data:'', ora:'', evento:'', mercato:'', quota:null });
     multiplaState.rows = multiplaState.rows.map(r => Object.assign({ data:'', ora:'', evento:'', mercato:'', quota:null }, r));
     multiplaState.importo = parseFloat(saved.importo) || 10;
+    multiplaState.bonus = parseFloat(saved.bonus) || 0;
     multiplaState.esito = saved.esito || null;
     return true;
   } catch(e) { return false; }
@@ -510,9 +544,11 @@ function calcMultipla() {
   const quote = multiplaState.rows.map(r => parseFloat(r.quota)).filter(q => !isNaN(q) && q > 1);
   const quotaTot = quote.length ? parseFloat(quote.reduce((a,b)=>a*b,1).toFixed(2)) : 0;
   const importo = parseFloat(multiplaState.importo) || 0;
+  const bonus = parseFloat(multiplaState.bonus) || 0;
   const vincitaLord = quotaTot > 0 ? parseFloat((importo * quotaTot).toFixed(2)) : 0;
-  const profitto = multiplaState.esito === 'ok' ? parseFloat((vincitaLord - importo).toFixed(2)) : multiplaState.esito === 'ko' ? -importo : 0;
-  return { eventi: quote.length, quotaTot, importo, vincitaLord, profitto };
+  const vincitaTot = parseFloat((vincitaLord + bonus).toFixed(2));
+  const profitto = multiplaState.esito === 'ok' ? parseFloat((vincitaTot - importo).toFixed(2)) : multiplaState.esito === 'ko' ? -importo : 0;
+  return { eventi: quote.length, quotaTot, importo, vincitaLord, vincitaTot: parseFloat((vincitaLord + (parseFloat(multiplaState.bonus)||0)).toFixed(2)), bonus: parseFloat(multiplaState.bonus)||0, profitto };
 }
 function buildMultiplaPage() {
   const page = g('page-multipla');
@@ -538,6 +574,8 @@ function buildMultiplaPage() {
     '<div class="settings-bar">',
     '  <div class="setting-group"><label>Importo giocato</label>',
     '    <div class="input-wrap"><input type="number" id="multi-importo" value="10" min="0.1" step="0.5"><span class="unit">€</span></div></div>',
+    '  <div class="setting-group"><label>Bonus bookmaker</label>',
+    '    <div class="input-wrap"><input type="number" id="multi-bonus" value="0" min="0" step="0.5"><span class="unit">€</span></div></div>',
     '  <button class="btn-reset" id="multi-reset">↺ Reset multipla</button>',
     '</div>',
     '<div class="stats-grid">',
@@ -546,6 +584,7 @@ function buildMultiplaPage() {
     '  <div class="stat-card"><div class="stat-icon">◎</div><div class="stat-body"><div class="stat-label">Importo</div><div class="stat-value" id="multi-stake">0,00 €</div></div></div>',
     '  <div class="stat-card"><div class="stat-icon">▲</div><div class="stat-body"><div class="stat-label">Vincita potenziale</div><div class="stat-value green" id="multi-vincita">0,00 €</div></div></div>',
     '  <div class="stat-card"><div class="stat-icon">△</div><div class="stat-body"><div class="stat-label">Profitto</div><div class="stat-value" id="multi-profitto">—</div></div></div>',
+    '  <div class="stat-card"><div class="stat-icon">🎁</div><div class="stat-body"><div class="stat-label">Bonus incluso</div><div class="stat-value gold" id="multi-bonus-disp">0,00 €</div></div></div>',
     '</div>',
     '<div class="table-wrap"><table><thead><tr>',
     '<th class="col-n">#</th><th class="col-date">Data</th><th class="col-time">Ora</th><th class="col-dsc">Evento</th><th class="col-dsc">Mercato</th><th class="col-qg">Quota</th>',
@@ -567,7 +606,9 @@ function recalcMultipla() {
   if (g('multi-eventi'))  g('multi-eventi').textContent  = c.eventi;
   if (g('multi-quota'))   g('multi-quota').textContent   = c.quotaTot ? fn(c.quotaTot) : '0,00';
   if (g('multi-stake'))   g('multi-stake').textContent   = fe(c.importo);
-  if (g('multi-vincita')) g('multi-vincita').textContent = fe(c.vincitaLord);
+  if (g('multi-vincita')) g('multi-vincita').textContent = fe(c.vincitaTot)+(c.bonus>0?' (incl. '+fe(c.bonus)+' bonus)':'');
+  if (g('multi-bonus-disp')) g('multi-bonus-disp').textContent = fe(c.bonus);
+  const bonusInp=g('multi-bonus'); if(bonusInp&&document.activeElement!==bonusInp) bonusInp.value=multiplaState.bonus||0;
   const pr = g('multi-profitto');
   if (pr) { pr.textContent = multiplaState.esito ? (c.profitto>=0?'+':'')+fe(c.profitto) : '—'; pr.className='stat-value '+(!multiplaState.esito?'':c.profitto>=0?'green':'red'); }
   const okBtn=g('multi-ok'), koBtn=g('multi-ko');
@@ -673,6 +714,8 @@ document.addEventListener('DOMContentLoaded', async ()=>{
       });
     });
   });
+  const mb=document.getElementById('multi-bonus');
+  if(mb) mb.addEventListener('input',function(){const v=parseFloat(this.value.replace(',','.'));multiplaState.bonus=(!isNaN(v)&&v>=0)?v:0;recalcMultipla();saveMultipla();});
   const mi=document.getElementById('multi-importo');
   if(mi) mi.addEventListener('input',function(){const v=parseFloat(this.value.replace(',','.'));multiplaState.importo=(!isNaN(v)&&v>0)?v:0;recalcMultipla();saveMultipla();});
   document.addEventListener('click', e=>{
@@ -681,6 +724,8 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   });
   document.addEventListener('click', e=>{
     if(e.target.classList.contains('btn-reset')){const tab=e.target.dataset.tab;if(!tab)return;if(!confirm('Salvare la sessione nel Taccuino e resettare CASSA?'))return;doReset(tab);}
+    if(e.target.classList.contains('btn-elimina')){const tab=e.target.dataset.tab;if(tab)eliminaScalata(tab);}
+    if(e.target.classList.contains('btn-annulla')){const tab=e.target.dataset.tab;const idx=parseInt(e.target.dataset.idx);if(tab&&!isNaN(idx))annullaEsito(tab,idx);}
   });
   document.addEventListener('click', e=>{
     if(e.target.id==='multi-ok') setMultiplaEsito('ok');
