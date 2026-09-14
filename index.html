@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Colpo Perfetto</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=cp7-blue-logo-v1">
+</head>
+<body>
+
+<div class="noise"></div>
+<div class="bg-glow"></div>
+
+<div class="app">
+
+  <nav class="tab-bar">
+    <button class="tab active" data-tab="cp1">SEGNO FISSO</button>
+    <button class="tab" data-tab="cp2">Over 1.5 Casa</button>
+    <button class="tab" data-tab="cp3">G/G</button>
+    <button class="tab" data-tab="cp4">Over 1.5 Ospite</button>
+    <button class="tab" data-tab="cp5">Over 2.5</button>
+    <button class="tab" data-tab="cp6">MG Casa / MG Ospite</button>
+    <button class="tab" data-tab="multipla">Multipla</button>
+    <div class="tab-spacer"></div>
+    <button class="tab tab-special" data-tab="bilancio">Bilancio</button>
+    <button class="tab tab-special" data-tab="taccuino">Taccuino</button>
+  </nav>
+
+  <div id="page-cp1" class="page active"></div>
+  <div id="page-cp2" class="page"></div>
+  <div id="page-cp3" class="page"></div>
+  <div id="page-cp4" class="page"></div>
+  <div id="page-cp5" class="page"></div>
+  <div id="page-cp6" class="page"></div>
+  <div id="page-multipla" class="page theme-cp7"></div>
+
+  <div id="page-bilancio" class="page">
+    <div class="bil-header">
+      <div class="hero-eyebrow">Riepilogo globale</div>
+      <h2 class="bil-title">Bilancio</h2>
+    </div>
+    <div class="bil-grid" id="bil-grid"></div>
+    <div class="bil-totals" id="bil-totals"></div>
+  </div>
+
+  <div id="page-taccuino" class="page">
+    <div class="bil-header">
+      <div class="hero-eyebrow">Storico sessioni</div>
+      <h2 class="bil-title">Taccuino</h2>
+    </div>
+    <div id="taccuino-content"></div>
+  </div>
+
+</div>
+
+<script src="cloud-sync.js?v=supabase1"></script>
+<script src="app.js?v=cp7-blue-logo-v1"></script>
+<script src="taccuino.js?v=final6cp"></script>
+</body>
+</html>
